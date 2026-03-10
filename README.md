@@ -6,7 +6,7 @@
 
 > Teleports Leaflet popups to a `<body>`-level fixed overlay so they always render **above** zoom controls, attribution, and any other UI element.
 
-**[Live Demo →](https://mwasil.github.io/leaflet.popup-portal/) | [Real-World Example →](https://mapa.wirtualneszlaki.pl/swiat/geografia-polityczna-swiata)**
+**[Live Demo →](https://mwasil.github.io/leaflet.popup-portal/) | [Real-World Example →](https://mapa.wirtualneszlaki.pl/swiat/geografia-polityczna-swiata) | [npm →](https://www.npmjs.com/package/leaflet.popup-portal)**
 
 ---
 
@@ -44,6 +44,8 @@ body
 **[► Open Live Demo](https://mwasil.github.io/leaflet.popup-portal/)**
 
 **[► See Real-World Usage (Political World Map)](https://mapa.wirtualneszlaki.pl/swiat/geografia-polityczna-swiata)**
+
+**[► npm Package](https://www.npmjs.com/package/leaflet.popup-portal)**
 
 The demo shows two identical maps side by side — left without the plugin, right with it. Open a popup near the zoom control to see the difference immediately.
 
