@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Leaflet.PopupPortal – Live Demo</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9/dist/leaflet.css"/>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+    }
+
+    /* ── Page header ──────────────────────────────────────────── */
+    .hdr {
+      height: 50px;
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      padding: 0 18px;
+      gap: 12px;
+      flex-shrink: 0;
+      z-index: 20000; /* above the portal overlay */
+      position: relative;
+    }
+    .hdr h1 { font-size: 1rem; font-weight: 700; white-space: nowrap; }
+    .hdr h1 em { font-style: normal; color: #58a6ff; }
+    .hdr p {
+      font-size: 0.76rem;
+      color: #8b949e;
+      flex: 1;
+      padding-left: 12px;
+      border-left: 1px solid #30363d;
+    }
+    .hdr a {
+      color: #8b949e;
+      text-decoration: none;
+      font-size: 0.73rem;
+      padding: 3px 10px;
+      border: 1px solid #30363d;
+      border-radius: 5px;
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+    }
+    .hdr a:hover { background: #21262d; color: #e6edf3; }
+
+    /* ── Arena ────────────────────────────────────────────────── */
+    .arena {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      padding: 14px 14px 14px 14px;
+      gap: 14px;
+      position: relative; /* for the VS badge */
+      align-items: stretch;
+    }
+
+    /* ── Phone frame ──────────────────────────────────────────── */
+    /*  IMPORTANT: position:relative WITHOUT z-index here.          */
+    /*  If we set z-index the pane would create a new stacking       */
+    /*  context and the portal popup would be trapped inside it.     */
+    .pane {
+      flex: 1;
+      position: relative; /* NO z-index — must not create stacking context */
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      border-radius: 14px;
+      overflow: hidden; /* clips children to rounded corners */
+      box-shadow: 0 8px 40px rgba(0,0,0,.65);
+      background: #1c2128;
+    }
+    /* position:fixed elements (the portal popup) are NOT clipped by
+       overflow:hidden unless an ancestor has transform/filter/perspective.
+       The portal popup on the right map will correctly escape this frame. */
+
+    /* ── In-app toolbar ───────────────────────────────────────── */
+    /*  This is the "enemy": it lives outside the Leaflet map-pane    */
+    /*  stacking context. z-index:1200 beats Leaflet controls (1000)  */
+    /*  and the trapped popup. The portal popup wins with z-index     */
+    /*  10000.  (.pane has no z-index → app-bar participates in the   */
+    /*   body stacking context directly.)                             */
+    .app-bar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 52px;
+      z-index: 1200;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 10px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      pointer-events: none; /* demo only — toolbar not interactive */
+    }
+    .app-bar.bad  { background: rgba(105, 0, 0, 0.78); }
+    .app-bar.good { background: rgba(0, 80, 35, 0.78); }
+
+    .ab-icon  { font-size: 1.1rem; color: rgba(255,255,255,.8); }
+    .ab-title { flex: 1; font-size: 0.84rem; font-weight: 700; color: #fff; }
+    .ab-badge {
+      font-size: 0.6rem;
+      font-weight: 700;
+      background: rgba(255,255,255,.18);
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 4px;
+      padding: 2px 6px;
+      color: rgba(255,255,255,.9);
+      white-space: nowrap;
+    }
+
+    /* ── Leaflet map fills the remaining height ───────────────── */
+    .pane-map {
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* ── Vintage basemap effect (tiles only) ─────────────────── */
+    #map-bad .leaflet-tile-pane,
+    #map-good .leaflet-tile-pane {
+      filter: sepia(0.88) saturate(0.62) hue-rotate(-18deg) brightness(1.05) contrast(0.92) grayscale(0.22);
+    }
+
+    /* ── Bottom results panel ─────────────────────────────────── */
+    .bottom-panel {
+      flex-shrink: 0;
+      height: 148px;
+      background: #161b22;
+      border-top: 1px solid #30363d;
+      padding: 10px 14px 6px;
+      overflow-y: auto;
+    }
+    .bp-title {
+      font-size: 0.62rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #8b949e;
+      margin-bottom: 7px;
+    }
+    .place {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 5px 0;
+      border-bottom: 1px solid #21262d;
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.15s ease;
+    }
+    .place:last-child { border-bottom: none; }
+    .place:hover {
+      background: rgba(88, 166, 255, 0.08);
+    }
+    .place:focus-visible {
+      outline: 1px solid #58a6ff;
+      outline-offset: 2px;
+      border-radius: 8px;
+    }
+    .place.is-active {
+      background: rgba(88, 166, 255, 0.14);
+      transform: translateX(2px);
+    }
+    .place-icon {
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      background: #21262d;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.8rem;
+      flex-shrink: 0;
+    }
+    .place-name {
+      flex: 1;
+      font-size: 0.71rem;
+      font-weight: 600;
+      color: #e6edf3;
+    }
+    .place-dist { font-size: 0.63rem; color: #8b949e; }
+
+    /* ── State labels ─────────────────────────────────────────── */
+    .pane-label {
+      position: absolute;
+      /* sits between app-bar bottom (52px) and map content */
+      top: 58px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1300; /* above app-bar for visibility */
+      padding: 3px 11px;
+      border-radius: 10px;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .pane-label.bad  { background: rgba(218, 54, 51, 0.92); color: #fff; }
+    .pane-label.good { background: rgba(35, 134, 54, 0.92); color: #fff; }
+
+    /* ── VS badge ─────────────────────────────────────────────── */
+    .vs {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 15000; /* above the portal popup */
+      width: 34px; height: 34px;
+      background: #0d1117;
+      border: 2px solid #30363d;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.6rem;
+      font-weight: 800;
+      color: #8b949e;
+      pointer-events: none;
+    }
+
+    /* ── Popup content ────────────────────────────────────────── */
+    .leaflet-popup-content-wrapper {
+      border-radius: 8px !important;
+      box-shadow: 0 6px 24px rgba(0,0,0,.4) !important;
+    }
+    .leaflet-popup-content { margin: 10px 14px !important; }
+
+    .pop {
+      font-size: 0.77rem;
+      line-height: 1.55;
+      min-width: 190px;
+    }
+    .pop b { display: block; font-size: 0.82rem; margin-bottom: 3px; }
+    .pop code {
+      font-size: 0.7rem;
+      background: #f0f0f0;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+    .tag {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 2px 7px;
+      border-radius: 3px;
+      font-size: 0.64rem;
+      font-weight: 700;
+    }
+    .tag.bad  { background: #ffa198; color: #3b0000; }
+    .tag.good { background: #7ee787; color: #003820; }
+  </style>
+</head>
+<body>
+
+<header class="hdr">
+  <h1>Leaflet.<em>PopupPortal</em></h1>
+  <p>Map embedded inside a mobile app layout — the in-app toolbar blocks the popup without the plugin.</p>
+  <a href="https://github.com/mwasil/leaflet.popup-portal" target="_blank">⭐ GitHub</a>
+  <a href="https://www.npmjs.com/package/leaflet.popup-portal" target="_blank">📦 npm</a>
+</header>
+
+<div class="arena">
+
+  <!-- ── LEFT: WITHOUT plugin ──────────────────────────────── -->
+  <div class="pane">
+
+    <!-- App toolbar: z-index:1200 in body stacking context.
+         Beats lealet controls (1000) AND the trapped popup. -->
+    <div class="app-bar bad">
+      <span class="ab-icon">&#8592;</span>
+      <span class="ab-title">Nearby Places</span>
+      <span class="ab-badge">toolbar z-index:1200</span>
+    </div>
+
+    <div class="pane-label bad">&#x2717; Without PopupPortal</div>
+    <div id="map-bad" class="pane-map"></div>
+
+    <div class="bottom-panel">
+      <div class="bp-title">Results near you</div>
+      <div id="list-bad"></div>
+    </div>
+  </div>
+
+  <div class="vs">VS</div>
+
+  <!-- ── RIGHT: WITH plugin ────────────────────────────────── -->
+  <div class="pane">
+
+    <div class="app-bar good">
+      <span class="ab-icon">&#8592;</span>
+      <span class="ab-title">Nearby Places</span>
+      <span class="ab-badge">toolbar z-index:1200</span>
+    </div>
+
+    <div class="pane-label good">&#x2713; With PopupPortal</div>
+    <div id="map-good" class="pane-map"></div>
+
+    <div class="bottom-panel">
+      <div class="bp-title">Results near you</div>
+      <div id="list-good"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9/dist/leaflet.js"></script>
+<!--
+  Plugin loaded after Leaflet but before map creation.
+  The LEFT map passes { popupPortal: false } to demonstrate the bug.
+-->
+<script src="./leaflet.popup-portal.js"></script>
+<script>
+  var CENTER   = [52.2297, 21.0122]; // Warsaw
+  var ZOOM     = 14;
+  var TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  var TILE_OPT = {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
+                + ' contributors',
+    subdomains: 'abc',
+    maxZoom: 19
+  };
+  var PLACE_DATA = [
+    {
+      id: 'coffee-lab',
+      icon: '&#9749;',
+      name: 'Coffee Lab',
+      distance: '120 m',
+      pointFactory: function (size) {
+        return L.point(size.x * 0.42, 115);
+      },
+      popupContent: function (variant) {
+        return '<div class="pop">'
+          + '<b>Coffee Lab</b>'
+          + (variant === 'bad'
+              ? 'Popup trapped inside the map-pane stacking context.<br>'
+                + 'The app toolbar lives <em>outside</em> that context —<br>'
+                + 'it always paints on top (z-index&nbsp;1200&nbsp;&gt;&nbsp;auto).'
+              : 'Popup teleported to <code>#leaflet-popup-portal</code><br>'
+                + 'on <code>&lt;body&gt;</code> at <code>z-index:10000</code>.<br>'
+                + 'Beats the toolbar (1200) at every scroll &amp; zoom.')
+          + '<br><span class="tag ' + variant + '">'
+          + (variant === 'bad' ? '&#x2717; hidden under toolbar' : '&#x2713; above toolbar')
+          + '</span></div>';
+      },
+      popupOptions: { maxWidth: 230, autoPan: false, keepInView: false },
+      autoOpen: true
+    },
+    {
+      id: 'trattoria-roma',
+      icon: '&#127829;',
+      name: 'Trattoria Roma',
+      distance: '280 m',
+      pointFactory: function (size) {
+        return L.point(size.x * 0.72, size.y * 0.6);
+      },
+      popupContent: function (variant) {
+        return '<div class="pop">'
+          + '<b>Trattoria Roma</b>'
+          + 'Pan this popup toward the toolbar area.<br>'
+          + (variant === 'bad'
+              ? 'It disappears behind the toolbar.'
+              : 'It stays above the toolbar at all times.')
+          + '</div>';
+      },
+      popupOptions: { maxWidth: 210, autoPan: false }
+    },
+    {
+      id: 'city-market',
+      icon: '&#128722;',
+      name: 'City Market',
+      distance: '450 m',
+      pointFactory: function (size) {
+        return L.point(size.x * 0.28, size.y * 0.72);
+      },
+      popupContent: function (variant) {
+        return '<div class="pop">'
+          + '<b>City Market</b>'
+          + (variant === 'bad'
+              ? 'This marker uses the standard Leaflet popup flow.<br>Open it from the list to compare how it layers under the toolbar.'
+              : 'Open this marker from the list below.<br>The popup still renders above surrounding app UI after teleporting.')
+          + '</div>';
+      },
+      popupOptions: { maxWidth: 220, autoPan: false }
+    }
+  ];
+
+  /* ── Left map: portal disabled — demonstrates the stacking bug ── */
+  var mapBad  = L.map('map-bad',  { popupPortal: false }).setView(CENTER, ZOOM);
+
+  /* ── Right map: portal active (default) ── */
+  var mapGood = L.map('map-good', {}).setView(CENTER, ZOOM);
+  var DEMO_STATE = {
+    bad: { map: mapBad, markers: {}, listEl: null, ready: false },
+    good: { map: mapGood, markers: {}, listEl: null, ready: false }
+  };
+  var popupSyncLocked = false;
+
+  function getOtherVariant(variant) {
+    return variant === 'bad' ? 'good' : 'bad';
+  }
+
+  function syncMaps(mapA, mapB) {
+    var syncing = false;
+
+    function syncView(source, target) {
+      if (syncing) { return; }
+
+      syncing = true;
+      target.setView(source.getCenter(), source.getZoom(), {
+        animate: false,
+        reset: false
+      });
+      syncing = false;
+    }
+
+    mapA.on('move zoom', function () {
+      syncView(mapA, mapB);
+    });
+
+    mapB.on('move zoom', function () {
+      syncView(mapB, mapA);
+    });
+  }
+
+  syncMaps(mapBad, mapGood);
+
+  L.tileLayer(TILE_URL, TILE_OPT).addTo(mapBad);
+  L.tileLayer(TILE_URL, TILE_OPT).addTo(mapGood);
+
+  function setActiveListItem(listEl, placeId) {
+    Array.prototype.forEach.call(listEl.querySelectorAll('.place'), function (item) {
+      item.classList.toggle('is-active', item.getAttribute('data-place-id') === placeId);
+    });
+  }
+
+  function syncPopupState(sourceVariant, placeId) {
+    var targetVariant = getOtherVariant(sourceVariant);
+    var targetState = DEMO_STATE[targetVariant];
+
+    if (popupSyncLocked || !targetState || !targetState.ready) {
+      return;
+    }
+
+    popupSyncLocked = true;
+
+    try {
+      if (placeId) {
+        if (targetState.markers[placeId]) {
+          targetState.markers[placeId].openPopup();
+        }
+      } else {
+        targetState.map.closePopup();
+      }
+    } finally {
+      popupSyncLocked = false;
+    }
+  }
+
+  function renderPlaceList(listEl, markerById, map) {
+    listEl.innerHTML = '';
+
+    PLACE_DATA.forEach(function (place) {
+      var item = document.createElement('div');
+      item.className = 'place';
+      item.setAttribute('role', 'button');
+      item.setAttribute('tabindex', '0');
+      item.setAttribute('data-place-id', place.id);
+      item.innerHTML = '<div class="place-icon">' + place.icon + '</div>'
+        + '<div class="place-name">' + place.name + '</div>'
+        + '<div class="place-dist">' + place.distance + '</div>';
+
+      function openMarkerPopup() {
+        var marker = markerById[place.id];
+        if (!marker) { return; }
+
+        map.panTo(marker.getLatLng(), { animate: false });
+        marker.openPopup();
+      }
+
+      item.addEventListener('click', openMarkerPopup);
+      item.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          openMarkerPopup();
+        }
+      });
+
+      listEl.appendChild(item);
+    });
+  }
+
+  function populateMap(map, variant) {
+    map.whenReady(function () {
+      var sz = map.getSize();
+      var listEl = document.getElementById('list-' + variant);
+      var state = DEMO_STATE[variant];
+
+      state.listEl = listEl;
+
+      PLACE_DATA.forEach(function (place) {
+        var marker = L.marker(map.containerPointToLatLng(place.pointFactory(sz)))
+          .bindPopup(place.popupContent(variant), place.popupOptions)
+          .addTo(map);
+
+        state.markers[place.id] = marker;
+        marker._placeId = place.id;
+
+        marker.on('popupopen', function () {
+          setActiveListItem(listEl, place.id);
+          syncPopupState(variant, place.id);
+        });
+
+        marker.on('popupclose', function () {
+          var popup = map._popup;
+          setActiveListItem(listEl, popup && popup._source && popup._source._placeId || '');
+        });
+
+        if (place.autoOpen) {
+          marker.openPopup();
+        }
+      });
+
+      map.on('popupclose', function () {
+        setActiveListItem(listEl, '');
+        syncPopupState(variant, '');
+      });
+
+      renderPlaceList(listEl, state.markers, map);
+
+      state.ready = true;
+
+      if (map._popup && map._popup._source && map._popup._source._placeId) {
+        setActiveListItem(listEl, map._popup._source._placeId);
+        syncPopupState(variant, map._popup._source._placeId);
+      }
+    });
+  }
+
+  populateMap(mapBad,  'bad');
+  populateMap(mapGood, 'good');
+</script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+{
+  "name": "leaflet.popup-portal",
+  "version": "1.0.0",
+  "description": "Teleports Leaflet popups to a body-level fixed overlay so they render above all controls and UI elements.",
+  "main": "leaflet.popup-portal.js",
+  "scripts": {
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "keywords": [
+    "leaflet",
+    "leaflet-plugin",
+    "popup",
+    "z-index",
+    "stacking-context",
+    "portal",
+    "overlay",
+    "map"
+  ],
+  "author": "mwasil",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mwasil/leaflet.popup-portal.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mwasil/leaflet.popup-portal/issues"
+  },
+  "homepage": "https://mwasil.github.io/leaflet.popup-portal/",
+  "peerDependencies": {
+    "leaflet": ">=1.0.0"
+  },
+  "devDependencies": {}
+}
