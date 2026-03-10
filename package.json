@@ -1,6 +1,6 @@
 {
   "name": "leaflet.popup-portal",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Teleports Leaflet popups to a body-level fixed overlay so they render above all controls and UI elements.",
   "main": "leaflet.popup-portal.js",
   "scripts": {
