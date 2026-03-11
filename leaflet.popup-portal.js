@@ -6,7 +6,8 @@
  * ceiling (~400), so Leaflet controls (outside the pane) always render on top.
  *
  * Solution: When a popup opens, teleport its container element to a fixed
- * overlay attached directly to <body>. Position is recalculated from the
+ * overlay attached to <body> (or active fullscreen root). Position is
+ * recalculated from the
  * popup's latlng on every event that could move or resize the popup anchor
  * (map move, zoom, scroll, resize, viewreset). The close button is rewired
  * directly so it works outside the original popup pane. All Leaflet events
@@ -24,10 +25,48 @@
 
     var PORTAL_CLOSE_THRESHOLD = 100;
     var PORTAL_FADE_DURATION = 200;
+    var PORTAL_CLASS_WHITELIST = {
+        'leaflet-touch': true,
+        'leaflet-retina': true,
+        'leaflet-oldie': true,
+        'leaflet-safari': true,
+        'leaflet-fade-anim': true,
+        'leaflet-zoom-anim': true
+    };
 
     /* ─── Portal overlay ─────────────────────────────────────────── */
 
     var _portal = null;
+
+    function getDocumentFullscreenElement() {
+        return document.fullscreenElement ||
+            document.mozFullScreenElement ||
+            document.webkitFullscreenElement ||
+            document.msFullscreenElement ||
+            null;
+    }
+
+    function getPortalHostForMap(map) {
+        var fullscreenElement = getDocumentFullscreenElement();
+        var mapContainer = map && map._container;
+
+        if (fullscreenElement && mapContainer && fullscreenElement.contains(mapContainer)) {
+            return fullscreenElement;
+        }
+
+        return document.body;
+    }
+
+    function ensurePortalHost(map) {
+        var portal = getPortal();
+        var host = getPortalHostForMap(map);
+
+        if (portal.parentNode !== host) {
+            host.appendChild(portal);
+        }
+
+        return portal;
+    }
 
     function getPortal() {
         if (!_portal) {
@@ -42,7 +81,8 @@
                 'height:0',
                 'z-index:10000',
                 'pointer-events:none',
-                'overflow:visible'
+                'overflow:visible',
+                'background:transparent'
             ].join(';');
             document.body.appendChild(_portal);
         }
@@ -50,7 +90,7 @@
     }
 
     function syncPortalLeafletClasses(map) {
-        var portal = getPortal();
+        var portal = ensurePortalHost(map);
         var container = map && map._container;
         var classes = ['leaflet-popup-portal', 'leaflet-container'];
 
@@ -60,7 +100,7 @@
         }
 
         Array.prototype.forEach.call(container.classList, function (className) {
-            if (className !== 'leaflet-container' && className.indexOf('leaflet-') === 0) {
+            if (PORTAL_CLASS_WHITELIST[className]) {
                 classes.push(className);
             }
         });
@@ -289,6 +329,18 @@
         map.on('move zoom moveend zoomend viewreset resize', function () {
             var popup = map._popup;
             if (popup && popup._inPortal) {
+                ensurePortalHost(map);
+                popup._syncPortalPosition();
+            }
+        });
+
+        // In native fullscreen only descendants of the fullscreen root are visible.
+        // Rehost portal there (and back to body on exit) to keep popups visible.
+        map.on('fullscreenchange', function () {
+            ensurePortalHost(map);
+
+            var popup = map._popup;
+            if (popup && popup._inPortal) {
                 popup._syncPortalPosition();
             }
         });
@@ -297,6 +349,7 @@
         function onWindowScroll() {
             var popup = map._popup;
             if (popup && popup._inPortal) {
+                ensurePortalHost(map);
                 popup._syncPortalPosition();
             }
         }
